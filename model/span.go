@@ -17,6 +17,8 @@ package model
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strconv"
 	"time"
 )
 
@@ -111,8 +113,8 @@ func (s SpanModel) MarshalJSON() ([]byte, error) {
 func (s *SpanModel) UnmarshalJSON(b []byte) error {
 	type Alias SpanModel
 	span := &struct {
-		T uint64 `json:"timestamp,omitempty"`
-		D uint64 `json:"duration,omitempty"`
+		T json.Number `json:"timestamp,omitempty"`
+		D json.Number `json:"duration,omitempty"`
 		*Alias
 	}{
 		Alias: (*Alias)(s),
@@ -123,10 +125,18 @@ func (s *SpanModel) UnmarshalJSON(b []byte) error {
 	if s.ID < 1 {
 		return ErrValidIDRequired
 	}
-	if span.T > 0 {
-		s.Timestamp = time.Unix(0, int64(span.T)*1e3)
+	ts, err := getInt64(span.T)
+	if err != nil {
+		return err
 	}
-	s.Duration = time.Duration(span.D*1e3) * time.Nanosecond
+	if ts > 0 {
+		s.Timestamp = time.Unix(0, ts * 1e3)
+	}
+	dur, err := getInt64(span.D)
+	if err != nil {
+		return err
+	}
+	s.Duration = time.Duration(dur*1e3) * time.Nanosecond
 	if s.LocalEndpoint.Empty() {
 		s.LocalEndpoint = nil
 	}
@@ -135,4 +145,22 @@ func (s *SpanModel) UnmarshalJSON(b []byte) error {
 		s.RemoteEndpoint = nil
 	}
 	return nil
+}
+
+func getInt64(number json.Number) (value int64, err error) {
+	// try int64, then float64, then string. What is the optimal order be here?
+	if v, err := number.Int64(); err == nil {
+		return v, nil
+	}
+	if v, err := number.Float64(); err == nil { // this is in case of scientific notation: 1.57967750526223e+15.
+		return int64(v), nil
+	}
+	strVal := number.String()
+	if len(strVal) == 0 { // TODO is this really a valid case? according to the tests it is
+		return 0, nil
+	}
+	if v, err := strconv.Atoi(number.String()); err == nil {
+		value = int64(v)
+	}
+	return 0, errors.New(fmt.Sprintf("couldn't parse %v as an integer", number.String()))
 }
