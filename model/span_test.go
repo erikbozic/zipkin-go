@@ -90,43 +90,54 @@ func TestSpanJSON(t *testing.T) {
 }
 
 func TestSpanJSONTimestampFormat(t *testing.T) {
-	scientificNotationJson := ` {
-    "id": "05288a13701a3e5e",
-    "tags": {
-      "response_size": "63",
-      "node_id": "private",
-      "http.status_code": "201",
-      "http.method": "GET",
-      "upstream_cluster": "test-server",
-      "guid:x-request-id": "a4ddf6e7-c73a-95b0-ac02-a07997b3e59f",
-      "http.protocol": "HTTP/1.1",
-      "component": "proxy",
-      "http.url": "http://localhost:14140/test-server/service?xb3=true",
-      "downstream_cluster": "-",
-      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.130 Safari/537.36",
-      "request_size": "0",
-      "response_flags": "-"
-    },
-    "shared": true,
-    "traceId": "05288a13701a3e5e",
-    "name": "test-server",
-    "timestamp": 1.57967750526223e+15,
-    "duration": 1711,
-    "kind": "SERVER",
-    "localEndpoint": {
-      "port": 0,
-      "serviceName": "front-proxy",
-      "ipv4": "192.168.33.88"
-    }
-  }`
-	span := SpanModel{}
-	err := json.Unmarshal([]byte(scientificNotationJson), &span)
-	if err != nil {
-		t.Errorf("error while unmarshaling: %+v", err)
+	var input = []struct {
+		name string
+		json string
+	}{
+		{
+			name: "timestamp in scientific notation",
+			json: `{
+					 "id": "05288a13701a3e5e",
+					 "timestamp": 1.57967750526223e+15,
+					 "duration": 1711,
+					 "localEndpoint": {     
+					 }
+				   }`,
+		}, {
+			name: "timestamp as a string",
+			json: `{
+					 "id": "05288a13701a3e5e",
+					 "timestamp": "1579677505262230",
+					 "duration": 1711,
+					 "localEndpoint": {     
+					 }
+				   }`,
+		}, {
+			name: "timestamp as a number",
+			json: `{
+					 "id": "05288a13701a3e5e",
+					 "timestamp": 1579677505262230,
+					 "duration": 1711,
+					 "localEndpoint": {     
+					 }
+				   }`,
+		},
 	}
-	if span.Timestamp.UnixNano() / 1e3 != 1579677505262230 { // timestamp in microseconds
-		t.Errorf("screwthis")
+	wantedTimestamp := int64(1579677505262230) // timestamp in microseconds
+	for _, i := range input {
+		t.Run(i.name, func(t *testing.T) {
+			span := SpanModel{}
+			err := json.Unmarshal([]byte(i.json), &span)
+			if err != nil {
+				t.Errorf("error while unmarshaling: %+v", err)
+			}
+			unmarshaledTimestamp := span.Timestamp.UnixNano()/1e3
+			if unmarshaledTimestamp != wantedTimestamp {
+				t.Errorf("Unmarshal should have resulted in timestamp: %d, have: %d", wantedTimestamp,  unmarshaledTimestamp)
+			}
+		})
 	}
+
 }
 
 func TestEmptyTraceID(t *testing.T) {
